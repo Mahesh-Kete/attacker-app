@@ -1,0 +1,33 @@
+name: imposter-demo
+# Triggers a Citadel run whose only job is to invoke the imposter-commit
+# scanner. The actual imposter `uses:` reference lives in a sibling file
+# (_imposter-reference.yml) that has no triggers — Citadel scans the whole
+# .github/workflows directory and flags the pinned SHA without ever
+# executing the dangerous reference.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/imposter-demo.yml'
+      - '.github/workflows/_imposter-reference.yml'
+
+jobs:
+  scan:
+    runs-on: [self-hosted, linux, citadel-runner]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Citadel
+        uses: Mahesh-Kete/monorepo/action@main
+        with:
+          backend-url: http://localhost:8080
+          image-tag: dev
+          watch-path: ${{ github.workspace }}
+
+      - name: Idle (Citadel's scanner runs in the action's own steps)
+        run: |
+          citadel-step "post-scan idle"
+          echo "Citadel imposter-commit scan should have fired by now."
+          echo "Look in the dashboard for a 'critical' detection on this run."
+          sleep 2

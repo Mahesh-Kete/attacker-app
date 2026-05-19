@@ -1,0 +1,30 @@
+# Static demo of an imposter-commit reference for Citadel to flag.
+#
+# This workflow file has NO triggers (only `workflow_dispatch` so it exists
+# in the Actions UI as manual-only) — it must never actually run, because
+# the `uses:` line below is a 40-char SHA that's NOT reachable from
+# actions/checkout's default branch. In a real attack that SHA would
+# point at a fork containing backdoored code.
+#
+# Citadel's imposter-commit scanner reads every .github/workflows/*.yml
+# file in the workspace and flags this reference even though the workflow
+# never executes.
+
+name: hypothetical-attacker
+
+on:
+  workflow_dispatch:
+
+jobs:
+  malicious:
+    # DO NOT run this manually. The pinned SHA below is intentionally
+    # invalid for demo purposes; running this would fail at action download.
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned SHA — looks "secure" because it's a 40-char hex, but it
+      # isn't a commit on actions/checkout's default branch. This is the
+      # exact pattern Citadel's imposter_commit rule catches.
+      - uses: actions/checkout@1234567890abcdef1234567890abcdef12345678
+        with:
+          ref: main
+      - run: echo "this would be attacker code"
